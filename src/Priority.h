@@ -5,9 +5,17 @@
 #include <memory>
 #include <string>
 
-enum class BoostResult { boosted, alreadyBoosted, unchanged, denied, restorePending };
+enum class BoostResult { boosted, alreadyBoosted, unchanged, denied, restorePending, disabled };
 
 DWORD WindowProcess(HWND window);
+
+struct AppTarget {
+    HWND window{};
+    DWORD pid{};
+    ULONGLONG created{};
+};
+
+ULONGLONG ProcessCreationTime(HANDLE process);
 
 struct CloseWinHandle {
     void operator()(HANDLE handle) const noexcept { CloseHandle(handle); }
@@ -19,9 +27,9 @@ class PriorityManager {
 public:
     ~PriorityManager();
 
-    BoostResult Boost(HWND foreground);
+    BoostResult Boost(const AppTarget& target);
     bool Restore();
-    bool RestoreIfDifferent(DWORD foregroundPid);
+    void Refresh();
 
     DWORD Pid() const { return pid_; }
     const std::wstring& Name() const { return name_; }

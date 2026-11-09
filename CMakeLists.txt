@@ -8,8 +8,9 @@ endif()
 enable_language(RC)
 add_executable(WhipCPU WIN32
     src/main.cpp
-    src/MouseInput.cpp
+    src/AppList.cpp
     src/Overlay.cpp
+    src/Panel.cpp
     src/Priority.cpp
     assets/WhipCPU.rc
 )
@@ -25,4 +26,4 @@ target_compile_options(WhipCPU PRIVATE
 target_include_directories(WhipCPU PRIVATE assets)
 # The resource file supplies the application manifest.
 target_link_options(WhipCPU PRIVATE /MANIFEST:NO)
-target_link_libraries(WhipCPU PRIVATE user32 gdi32 gdiplus shell32 winmm)
+target_link_libraries(WhipCPU PRIVATE user32 gdi32 gdiplus shell32 winmm dwmapi)

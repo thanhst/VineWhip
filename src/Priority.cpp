@@ -34,23 +34,38 @@ DWORD WindowProcess(HWND window)
     return pid;
 }
 
+ULONGLONG ProcessCreationTime(HANDLE process)
+{
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) {
+        return 0;
+    }
+    return (static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+}
+
 PriorityManager::~PriorityManager()
 {
     Restore();
 }
 
-BoostResult PriorityManager::Boost(HWND foreground)
+BoostResult PriorityManager::Boost(const AppTarget& target)
 {
-    if (!foreground || GetForegroundWindow() != foreground) {
+    const DWORD pid = target.pid;
+    if (!pid || pid == GetCurrentProcessId() || WindowProcess(target.window) != pid ||
+        !IsWindowVisible(target.window) || target.window == GetShellWindow() ||
+        target.window == GetDesktopWindow()) {
         return BoostResult::unchanged;
     }
-    const DWORD pid = WindowProcess(foreground);
-    if (!RestoreIfDifferent(pid)) {
+    Refresh();
+    if (pid_ != pid && !Restore()) {
         return BoostResult::restorePending;
     }
-    if (!pid || pid == GetCurrentProcessId() ||
-        foreground == GetShellWindow() || foreground == GetDesktopWindow()) {
-        return BoostResult::unchanged;
+
+    constexpr DWORD access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_INFORMATION |
+        SYNCHRONIZE;
+    UniqueWinHandle process(OpenProcess(access, FALSE, pid));
+    if (!process || !target.created || ProcessCreationTime(process.get()) != target.created) {
+        return BoostResult::denied;
     }
     if (process_) {
         if (WaitForSingleObject(process_.get(), 0) == WAIT_TIMEOUT &&
@@ -61,12 +76,8 @@ BoostResult PriorityManager::Boost(HWND foreground)
             return BoostResult::restorePending;
         }
     }
-
-    constexpr DWORD access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_INFORMATION |
-        SYNCHRONIZE;
-    UniqueWinHandle process(OpenProcess(access, FALSE, pid));
     BOOL critical = FALSE;
-    if (!process || !IsProcessCritical(process.get(), &critical)) {
+    if (!IsProcessCritical(process.get(), &critical)) {
         return BoostResult::denied;
     }
     if (critical) {
@@ -88,8 +99,9 @@ BoostResult PriorityManager::Boost(HWND foreground)
     if (!priority) {
         return BoostResult::denied;
     }
-    if (priority != NORMAL_PRIORITY_CLASS || GetForegroundWindow() != foreground ||
-        WindowProcess(foreground) != pid || WaitForSingleObject(process.get(), 0) != WAIT_TIMEOUT) {
+    if (priority != NORMAL_PRIORITY_CLASS || WindowProcess(target.window) != pid ||
+        !IsWindowVisible(target.window) ||
+        WaitForSingleObject(process.get(), 0) != WAIT_TIMEOUT) {
         return BoostResult::unchanged;
     }
     if (!SetPriorityClass(process.get(), kBoostedPriority)) {
@@ -136,9 +148,15 @@ bool PriorityManager::Restore()
     return false;
 }
 
-bool PriorityManager::RestoreIfDifferent(DWORD foregroundPid)
+void PriorityManager::Refresh()
 {
-    return pid_ == foregroundPid || Restore();
+    if (process_) {
+        const DWORD priority = GetPriorityClass(process_.get());
+        if ((priority && priority != kBoostedPriority) ||
+            WaitForSingleObject(process_.get(), 0) == WAIT_OBJECT_0) {
+            Forget();
+        }
+    }
 }
 
 void PriorityManager::Forget()
