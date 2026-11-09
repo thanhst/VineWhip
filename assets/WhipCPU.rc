@@ -1,0 +1,5 @@
+#include "resource.h"
+
+1 24 "WhipCPU.manifest"
+IDI_WHIPCPU ICON "whipcpu.ico"
+IDR_WHIP_CRACK WAVE "whip-crack.wav"
